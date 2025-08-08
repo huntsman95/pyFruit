@@ -276,16 +276,41 @@ def main():
 
     # Screensaver argument handling
     is_screensaver = False
+    is_preview = False
     width, height = 800, 600
     xpos, ypos = 0, 0
+    preview_hwnd = None
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg.startswith("/c"):
             print("No configuration for this screensaver.")
             sys.exit(0)
         elif arg.startswith("/p"):
-            print("No preview for this screensaver.")
-            sys.exit(0)
+            # Preview mode: /p <HWND>
+            is_preview = True
+            if len(sys.argv) > 2:
+                try:
+                    preview_hwnd = int(sys.argv[2])
+                except Exception:
+                    print("Invalid HWND for preview mode.")
+                    sys.exit(1)
+                # Get the size of the parent window robustly
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.windll.user32
+                rect = wintypes.RECT()
+                hwnd_c = ctypes.c_void_p(preview_hwnd)
+                if not user32.GetClientRect(hwnd_c, ctypes.byref(rect)):
+                    print("Failed to get parent window rect for preview mode.")
+                    sys.exit(1)
+                width = rect.right - rect.left
+                height = rect.bottom - rect.top
+                xpos = rect.left
+                ypos = rect.top
+            else:
+                print("No HWND provided for preview mode.")
+                sys.exit(1)
         elif arg.startswith("/s"):
             is_screensaver = True
             # Get virtual screen size and position (all monitors)
@@ -306,6 +331,59 @@ def main():
         glfw.window_hint(glfw.AUTO_ICONIFY, glfw.FALSE)
         window = glfw.create_window(width, height, "", None, None)
         glfw.set_window_pos(window, xpos, ypos)
+    elif is_preview:
+        # --- Windows screensaver preview best practices ---
+        glfw.window_hint(glfw.DECORATED, glfw.FALSE)
+        glfw.window_hint(glfw.FOCUSED, glfw.FALSE)
+        glfw.window_hint(glfw.AUTO_ICONIFY, glfw.FALSE)
+        window = glfw.create_window(width, height, "", None, None)
+        if not window:
+            glfw.terminate()
+            print("Could not create preview window")
+            sys.exit(1)
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        # Get the native window handle from GLFW
+        glfw_hwnd = glfw.get_win32_window(window)
+        hwnd_c = ctypes.c_void_p(preview_hwnd)
+        glfw_hwnd_c = ctypes.c_void_p(glfw_hwnd)
+        # Set parent
+        user32.SetParent(glfw_hwnd_c, hwnd_c)
+        # Set window style to WS_CHILD | WS_VISIBLE
+        GWL_STYLE = -16
+        WS_CHILD = 0x40000000
+        WS_VISIBLE = 0x10000000
+        style = user32.GetWindowLongW(glfw_hwnd_c, GWL_STYLE)
+        # Remove any existing WS_CHILD/WS_VISIBLE, then set them
+        style = (style & ~(WS_CHILD | WS_VISIBLE)) | WS_CHILD | WS_VISIBLE
+        user32.SetWindowLongW(glfw_hwnd_c, GWL_STYLE, ctypes.c_long(style))
+        # Move and resize to fit parent
+        user32.MoveWindow(glfw_hwnd_c, 0, 0, width, height, True)
+
+        # --- Subclass parent HWND to monitor WM_DESTROY ---
+        WM_DESTROY = 0x0002
+        GWL_WNDPROC = -4
+        WNDPROC_TYPE = ctypes.WINFUNCTYPE(
+            ctypes.c_long,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        )
+        original_wndproc = user32.GetWindowLongPtrW(hwnd_c, GWL_WNDPROC)
+        preview_should_close = ctypes.c_bool(False)
+
+        def py_wndproc(hwnd, msg, wparam, lparam):
+            if msg == WM_DESTROY:
+                preview_should_close.value = True
+            return user32.CallWindowProcW(
+                ctypes.c_void_p(original_wndproc), hwnd, msg, wparam, lparam
+            )
+
+        wndproc_ptr = WNDPROC_TYPE(py_wndproc)
+        user32.SetWindowLongPtrW(hwnd_c, GWL_WNDPROC, wndproc_ptr)
     else:
         window = glfw.create_window(width, height, "Dancing Apple", None, None)
     if not window:
@@ -363,7 +441,31 @@ def main():
     # Animation timing
     start_time = time.time()
     duration = 4.0  # seconds per loop (forward or backward)
+    # --- Main render loop ---
+    preview_user32 = None
+    preview_glfw_hwnd = None
+    hwnd_c = None
+    if is_preview:
+        import ctypes
+
+        preview_user32 = ctypes.windll.user32
+        preview_glfw_hwnd = glfw.get_win32_window(window)
+        hwnd_c = ctypes.c_void_p(preview_hwnd)
+        glfw_hwnd_c = ctypes.c_void_p(preview_glfw_hwnd)
     while not glfw.window_should_close(window):
+        # In preview mode, check if parent HWND is still valid, if we are still its child, if WM_DESTROY was received, or if our window is hidden
+        if is_preview and preview_hwnd is not None:
+            parent = preview_user32.GetParent(glfw_hwnd_c)
+            is_visible = preview_user32.IsWindowVisible(glfw_hwnd_c)
+            # Only exit if parent HWND is destroyed, or if GetParent is nonzero and not equal to preview_hwnd, or if WM_DESTROY was received, or if our window is hidden
+            if (
+                not preview_user32.IsWindow(hwnd_c)
+                or (parent != 0 and parent != preview_hwnd)
+                or ("preview_should_close" in locals() and preview_should_close.value)
+                or not is_visible
+            ):
+                glfw.set_window_should_close(window, True)
+                break
         now = time.time()
         t_anim = ((now - start_time) % (2 * duration)) / duration
         if t_anim > 1:
@@ -408,6 +510,12 @@ def main():
         glPopMatrix()
         glfw.swap_buffers(window)
         glfw.poll_events()
+    # Restore original WndProc if subclassed
+    if is_preview and preview_hwnd is not None:
+        try:
+            user32.SetWindowLongPtrW(hwnd_c, GWL_WNDPROC, original_wndproc)
+        except Exception:
+            pass
     glfw.terminate()
 
 
