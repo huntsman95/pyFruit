@@ -277,6 +277,7 @@ def main():
     # Screensaver argument handling
     is_screensaver = False
     width, height = 800, 600
+    xpos, ypos = 0, 0
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg.startswith("/c"):
@@ -287,9 +288,16 @@ def main():
             sys.exit(0)
         elif arg.startswith("/s"):
             is_screensaver = True
-            # Get screen size
+            # Get virtual screen size and position (all monitors)
             user32 = ctypes.windll.user32
-            width, height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+            SM_XVIRTUALSCREEN = 76
+            SM_YVIRTUALSCREEN = 77
+            SM_CXVIRTUALSCREEN = 78
+            SM_CYVIRTUALSCREEN = 79
+            xpos = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+            ypos = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            width = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+            height = user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
 
     monitor = None
     if is_screensaver:
@@ -297,6 +305,7 @@ def main():
         glfw.window_hint(glfw.FOCUSED, glfw.TRUE)
         glfw.window_hint(glfw.AUTO_ICONIFY, glfw.FALSE)
         window = glfw.create_window(width, height, "", None, None)
+        glfw.set_window_pos(window, xpos, ypos)
     else:
         window = glfw.create_window(width, height, "Dancing Apple", None, None)
     if not window:
