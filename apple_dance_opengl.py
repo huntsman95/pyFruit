@@ -333,7 +333,7 @@ def main():
         draw_obj(vertices, normals, texcoords, faces_by_mat, materials, texture_ids)
         # Draw face plane
         glPushMatrix()
-        glTranslatef(0, -3.07, 0.5)
+        glTranslatef(0, 0.5, 2.95)  # Move smile up and further forward
         # Face upright: rotate -90 deg around X (relative to apple)
         glRotatef(-90, 1, 0, 0)
         glColor4f(1, 1, 1, 1)  # Ensure face is not tinted
