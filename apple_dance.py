@@ -157,8 +157,8 @@ def animate_apple(obj, start_frame=1, end_frame=120):
         # Up-and-down (bouncing)
         y = 0
         z = abs(math.sin(2 * math.pi * t * 3)) * 2 + 1
-        # Spin (rotation around Z)
-        rot_z = t * 2 * math.pi * 2  # 2 full spins
+        # Oscillate left and right: Z rotation between -30 and +30 degrees
+        rot_z = math.radians(30) * math.sin(2 * math.pi * t * 2)
         # Sway (rotation around X and Y)
         rot_x = math.sin(2 * math.pi * t * 1.5) * 0.3
         rot_y = math.cos(2 * math.pi * t * 1.2) * 0.2
