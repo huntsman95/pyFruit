@@ -198,9 +198,20 @@ def bezier_point(t, points):
 
 
 # --- Animation parameters ---
-OBJ_PATH = "./models/apple.obj"
-FACE1_PATH = "./images/smile_1.png"
-FACE2_PATH = "./images/smile_2.png"
+
+
+# --- PyInstaller resource path helper ---
+def resource_path(relative_path):
+    import sys, os
+
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+
+OBJ_PATH = resource_path("models/apple.obj")
+FACE1_PATH = resource_path("images/smile_1.png")
+FACE2_PATH = resource_path("images/smile_2.png")
 
 # Path control points (match Blender's)
 PATH_POINTS = [
@@ -257,10 +268,37 @@ def draw_face_plane(size=2.5):
 
 # --- Main app ---
 def main():
+    import ctypes
+
     if not glfw.init():
         print("Could not initialize GLFW")
         sys.exit(1)
-    window = glfw.create_window(800, 600, "Dancing Apple", None, None)
+
+    # Screensaver argument handling
+    is_screensaver = False
+    width, height = 800, 600
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg.startswith("/c"):
+            print("No configuration for this screensaver.")
+            sys.exit(0)
+        elif arg.startswith("/p"):
+            print("No preview for this screensaver.")
+            sys.exit(0)
+        elif arg.startswith("/s"):
+            is_screensaver = True
+            # Get screen size
+            user32 = ctypes.windll.user32
+            width, height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
+    monitor = None
+    if is_screensaver:
+        glfw.window_hint(glfw.DECORATED, glfw.FALSE)
+        glfw.window_hint(glfw.FOCUSED, glfw.TRUE)
+        glfw.window_hint(glfw.AUTO_ICONIFY, glfw.FALSE)
+        window = glfw.create_window(width, height, "", None, None)
+    else:
+        window = glfw.create_window(width, height, "Dancing Apple", None, None)
     if not window:
         glfw.terminate()
         print("Could not create window")
@@ -270,6 +308,19 @@ def main():
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glEnable(GL_TEXTURE_2D)
+
+    # Hide cursor in screensaver mode
+    if is_screensaver:
+        glfw.set_input_mode(window, glfw.CURSOR, glfw.CURSOR_HIDDEN)
+
+    # Exit on mouse/keyboard input in screensaver mode
+    def exit_callback(window, *args):
+        glfw.set_window_should_close(window, True)
+
+    if is_screensaver:
+        glfw.set_key_callback(window, lambda w, k, s, a, m: exit_callback(w))
+        glfw.set_mouse_button_callback(window, lambda w, b, a, m: exit_callback(w))
+        glfw.set_cursor_pos_callback(window, lambda w, x, y: exit_callback(w))
     # Load assets
     vertices, normals, texcoords, faces_by_mat, materials = load_obj(OBJ_PATH)
     face_tex1 = load_texture(FACE1_PATH)
@@ -293,7 +344,9 @@ def main():
     def set_camera():
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluPerspective(45, 800 / 600, 0.1, 100)
+        # Use actual window size for aspect ratio
+        win_w, win_h = glfw.get_framebuffer_size(window)
+        gluPerspective(45, win_w / win_h, 0.1, 100)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
         gluLookAt(0, -40, 8, 0, 0, 0, 0, 0, 1)

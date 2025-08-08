@@ -1,0 +1,1 @@
+pyinstaller --onefile --windowed --name DancingApple.scr --additional-hooks-dir=. --add-data "models;models" --add-data "images;images" apple_dance_opengl.py

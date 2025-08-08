@@ -11,3 +11,7 @@ To demonstrate some methods that could be used to automate the creation of viral
 
 ## Demo
 ![demo](demo.gif)
+
+---
+
+## Bonus: OpenGL Dancing Fruit Screensaver!

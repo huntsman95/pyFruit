@@ -3,3 +3,4 @@ PyOpenGL_accelerate
 Pillow
 numpy
 glfw
+pyinstaller

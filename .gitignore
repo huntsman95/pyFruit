@@ -1,2 +1,5 @@
 *.blend
 *.blend1
+build/
+dist/
+__pycache__/
