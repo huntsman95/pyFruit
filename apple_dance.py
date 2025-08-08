@@ -169,7 +169,7 @@ def animate_apple(obj, start_frame=1, end_frame=120):
 
 
 # Add and animate a camera that pans left to right across the apple
-def add_and_animate_camera(start_frame=1, end_frame=120, pan_distance=60, height=8):
+def add_and_animate_camera(start_frame=1, end_frame=120, pan_distance=10, height=8):
     # Move camera farther back (increase Y distance)
     camera_y = -40
     bpy.ops.object.camera_add(location=(-pan_distance / 2, camera_y, height))
