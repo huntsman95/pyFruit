@@ -77,21 +77,36 @@ def add_animated_face(
     mat = bpy.data.materials.new(name="FaceMaterial")
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    tex_image = mat.node_tree.nodes.new("ShaderNodeTexImage")
-    img = bpy.data.images.load(face_image_path)
-    tex_image.image = img
-    tex_image.interpolation = "Closest"
-    tex_image.image.colorspace_settings.name = "sRGB"
-    tex_image.extension = "CLIP"
-    print(
-        f"Loaded face image: {face_image_path}, size: {img.size}, depth: {img.depth}, alpha_mode: {img.alpha_mode}"
-    )
-    # Make sure the image is loaded with alpha
-    if img.depth < 32:
-        img.alpha_mode = "CHANNEL_PACKED"
-    # Connect color and alpha
-    mat.node_tree.links.new(bsdf.inputs["Base Color"], tex_image.outputs["Color"])
-    mat.node_tree.links.new(bsdf.inputs["Alpha"], tex_image.outputs["Alpha"])
+    # Load both face images
+    img1 = bpy.data.images.load(bpy.path.abspath("//images/smile_1.png"))
+    img2 = bpy.data.images.load(bpy.path.abspath("//images/smile_2.png"))
+    # Create two image texture nodes
+    tex_image1 = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex_image1.image = img1
+    tex_image1.interpolation = "Closest"
+    tex_image1.image.colorspace_settings.name = "sRGB"
+    tex_image1.extension = "CLIP"
+    tex_image2 = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex_image2.image = img2
+    tex_image2.interpolation = "Closest"
+    tex_image2.image.colorspace_settings.name = "sRGB"
+    tex_image2.extension = "CLIP"
+    # Mix node to blend between the two faces
+    mix_node = mat.node_tree.nodes.new("ShaderNodeMixRGB")
+    mix_node.blend_type = "MIX"
+    mix_node.inputs["Fac"].default_value = 0.0  # 0=smile_1, 1=smile_2
+    # Connect both images to the mix node
+    mat.node_tree.links.new(mix_node.inputs[1], tex_image1.outputs["Color"])
+    mat.node_tree.links.new(mix_node.inputs[2], tex_image2.outputs["Color"])
+    # Connect mix to BSDF base color
+    mat.node_tree.links.new(bsdf.inputs["Base Color"], mix_node.outputs["Color"])
+    # Mix alpha for transparency
+    mix_alpha = mat.node_tree.nodes.new("ShaderNodeMixRGB")
+    mix_alpha.blend_type = "MIX"
+    mix_alpha.inputs["Fac"].default_value = 0.0
+    mat.node_tree.links.new(mix_alpha.inputs[1], tex_image1.outputs["Alpha"])
+    mat.node_tree.links.new(mix_alpha.inputs[2], tex_image2.outputs["Alpha"])
+    mat.node_tree.links.new(bsdf.inputs["Alpha"], mix_alpha.outputs["Color"])
     # Set metallic to 1.0
     bsdf.inputs["Metallic"].default_value = 1.0
     # Set alpha blend for PNG transparency
@@ -115,16 +130,19 @@ def add_animated_face(
         scene.eevee.use_ssr = True
         scene.eevee.use_ssr_refraction = True
         scene.render.film_transparent = True
-    # Animate face visibility for blinking (hide for a few frames)
-    blink_frames = [30, 32, 80, 82]  # Example blink at frames 30-32 and 80-82
+    # Animate face expression: swap to smile_2.png for frames 40-45 and 90-95
+    fac_curve = mix_node.inputs["Fac"]
+    fac_alpha_curve = mix_alpha.inputs["Fac"]
     for frame in range(start_frame, end_frame + 1):
-        face_plane.hide_viewport = False
-        face_plane.hide_render = False
-        if any(b <= frame <= b + 1 for b in blink_frames):
-            face_plane.hide_viewport = True
-            face_plane.hide_render = True
-        face_plane.keyframe_insert(data_path="hide_viewport", frame=frame)
-        face_plane.keyframe_insert(data_path="hide_render", frame=frame)
+        if (40 <= frame <= 45) or (60 <= frame <= 65) or (90 <= frame <= 95):
+            fac_curve.default_value = 1.0
+            fac_alpha_curve.default_value = 1.0
+        else:
+            fac_curve.default_value = 0.0
+            fac_alpha_curve.default_value = 0.0
+        fac_curve.keyframe_insert("default_value", frame=frame)
+        fac_alpha_curve.keyframe_insert("default_value", frame=frame)
+    # (Blinking and expressions are now handled only by image swapping)
     return face_plane
 
 
