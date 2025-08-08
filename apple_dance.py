@@ -53,6 +53,52 @@ def import_apple(path):
     return apple
 
 
+# Add a face plane with a PNG texture and parent it to the apple
+def add_animated_face(
+    apple,
+    face_image_path,
+    face_size=2.5,
+    face_offset=-3.07,
+    start_frame=1,
+    end_frame=120,
+):
+    # Create a plane for the face
+    bpy.ops.mesh.primitive_plane_add(
+        size=face_size, location=(0, face_offset, apple.location.z + 0.5)
+    )
+    face_plane = bpy.context.active_object
+    face_plane.name = "AppleFace"
+    # Rotate the face plane so it stands vertically (faces +Y)
+    face_plane.rotation_euler[0] = 3.14159 / 2  # 90 degrees in radians
+    # Parent to apple
+    face_plane.parent = apple
+    face_plane.matrix_parent_inverse = apple.matrix_world.inverted()
+    # Create a new material with image texture
+    mat = bpy.data.materials.new(name="FaceMaterial")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    tex_image = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    img = bpy.data.images.load(face_image_path)
+    tex_image.image = img
+    mat.node_tree.links.new(bsdf.inputs[0], tex_image.outputs[0])  # Base Color
+    # Set alpha blend for PNG transparency
+    mat.blend_method = "BLEND"
+    bsdf.inputs[21].default_value = 1.0  # Alpha
+    mat.node_tree.links.new(bsdf.inputs[21], tex_image.outputs[1])  # Alpha
+    face_plane.data.materials.append(mat)
+    # Animate face visibility for blinking (hide for a few frames)
+    blink_frames = [30, 32, 80, 82]  # Example blink at frames 30-32 and 80-82
+    for frame in range(start_frame, end_frame + 1):
+        face_plane.hide_viewport = False
+        face_plane.hide_render = False
+        if any(b <= frame <= b + 1 for b in blink_frames):
+            face_plane.hide_viewport = True
+            face_plane.hide_render = True
+        face_plane.keyframe_insert(data_path="hide_viewport", frame=frame)
+        face_plane.keyframe_insert(data_path="hide_render", frame=frame)
+    return face_plane
+
+
 # Animate the apple with a complex dance
 def animate_apple(obj, start_frame=1, end_frame=120):
     bpy.context.scene.frame_start = start_frame
@@ -175,6 +221,13 @@ def set_black_background():
 
 
 # Main execution
+
+
+def get_face_image_path():
+    # Use Blender's path utility to resolve relative to the .blend file or script
+    return bpy.path.abspath("//images/smile_1.png")
+
+
 def main():
     clear_scene()
     apple_obj_path = get_apple_obj_path()
@@ -185,6 +238,9 @@ def main():
     add_and_animate_camera(start_frame=1, end_frame=120)
     add_apple_lighting()
     set_black_background()
+    # Add animated face
+    face_image_path = get_face_image_path()
+    add_animated_face(apple, face_image_path, start_frame=1, end_frame=120)
 
 
 if __name__ == "__main__":
