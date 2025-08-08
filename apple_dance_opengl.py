@@ -300,10 +300,12 @@ def main():
 
     # Animation timing
     start_time = time.time()
-    duration = 4.0  # seconds per loop
+    duration = 4.0  # seconds per loop (forward or backward)
     while not glfw.window_should_close(window):
         now = time.time()
-        t_anim = ((now - start_time) % duration) / duration
+        t_anim = ((now - start_time) % (2 * duration)) / duration
+        if t_anim > 1:
+            t_anim = 2 - t_anim
         # Path position
         path_pos = bezier_point(t_anim, PATH_POINTS)
         # Dance animation (offsets)
