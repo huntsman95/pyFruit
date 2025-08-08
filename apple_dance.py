@@ -80,12 +80,41 @@ def add_animated_face(
     tex_image = mat.node_tree.nodes.new("ShaderNodeTexImage")
     img = bpy.data.images.load(face_image_path)
     tex_image.image = img
-    mat.node_tree.links.new(bsdf.inputs[0], tex_image.outputs[0])  # Base Color
+    tex_image.interpolation = "Closest"
+    tex_image.image.colorspace_settings.name = "sRGB"
+    tex_image.extension = "CLIP"
+    print(
+        f"Loaded face image: {face_image_path}, size: {img.size}, depth: {img.depth}, alpha_mode: {img.alpha_mode}"
+    )
+    # Make sure the image is loaded with alpha
+    if img.depth < 32:
+        img.alpha_mode = "CHANNEL_PACKED"
+    # Connect color and alpha
+    mat.node_tree.links.new(bsdf.inputs["Base Color"], tex_image.outputs["Color"])
+    mat.node_tree.links.new(bsdf.inputs["Alpha"], tex_image.outputs["Alpha"])
+    # Set metallic to 1.0
+    bsdf.inputs["Metallic"].default_value = 1.0
     # Set alpha blend for PNG transparency
     mat.blend_method = "BLEND"
-    bsdf.inputs[21].default_value = 1.0  # Alpha
-    mat.node_tree.links.new(bsdf.inputs[21], tex_image.outputs[1])  # Alpha
+    if hasattr(mat, "shadow_method"):
+        mat.shadow_method = "NONE"
+    mat.use_backface_culling = False
+    mat.alpha_threshold = 0.0
+    # Remove any previous materials
+    face_plane.data.materials.clear()
     face_plane.data.materials.append(mat)
+    # Ensure normals face forward
+    bpy.context.view_layer.objects.active = face_plane
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # Ensure Eevee transparency is enabled
+    scene = bpy.context.scene
+    if scene.render.engine == "BLENDER_EEVEE":
+        scene.eevee.use_ssr = True
+        scene.eevee.use_ssr_refraction = True
+        scene.render.film_transparent = True
     # Animate face visibility for blinking (hide for a few frames)
     blink_frames = [30, 32, 80, 82]  # Example blink at frames 30-32 and 80-82
     for frame in range(start_frame, end_frame + 1):
